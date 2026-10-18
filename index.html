@@ -504,7 +504,7 @@
     // ========== Supabase ==========
     const SUPABASE_URL = 'https://wxogyqemyxhuwxugikwi.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4b2d5cWVteXhodXd4dWdpa3dpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzMDk4MzcsImV4cCI6MjEwNzg4NTgzN30.G6tzYVy61prIjQ3ueaPiYqWWZkwMiNridMDr_iwBCy4';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // ========== State ==========
     let isAdmin = localStorage.getItem('phys_isAdmin') === 'true';
@@ -610,13 +610,13 @@
     // ========== Home ==========
     async function loadHome() {
       // Management
-      const { data: mgmt } = await supabase.from('management').select('*');
+      const { data: mgmt } = await db.from('management').select('*');
       document.getElementById('mgmt-list').innerHTML = (mgmt || []).map(m => `
         <div class="mgmt-card"><div class="role">${m.role}</div><div class="name">${m.name}</div></div>
       `).join('') || '<p style="color:#94a3b8">هنوز سمتی ثبت نشده</p>';
 
       // Locations
-      const { data: locs } = await supabase.from('locations').select('*');
+      const { data: locs } = await db.from('locations').select('*');
       document.getElementById('locations-list').innerHTML = (locs || []).map(l => `
         <div class="info-card">
           <span class="floor-badge">${l.floor || ''}</span>
@@ -630,7 +630,7 @@
 
     // ========== Slideshow ==========
     async function renderHomeSlideshow() {
-      const { data: events } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+      const { data: events } = await db.from('events').select('*').order('created_at', { ascending: false });
       const container = document.getElementById('home-slideshow');
       if (!events || events.length === 0) {
         container.innerHTML = '';
@@ -673,7 +673,7 @@
 
     // ========== Lost & Found ==========
     async function loadLostFound() {
-      let query = supabase.from('lost_found').select('*').order('created_at', { ascending: false });
+      let query = db.from('lost_found').select('*').order('created_at', { ascending: false });
       const { data } = await query;
       let items = data || [];
       if (currentLostFilter !== 'all') items = items.filter(i => i.type === currentLostFilter);
@@ -703,7 +703,7 @@
 
     // ========== Labs ==========
     async function loadLabs() {
-      const { data } = await supabase.from('lab_reports').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('lab_reports').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('labs-list');
       if (!data || data.length === 0) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div style="font-size:2.5rem">🧪</div><p>هنوز گزارش‌کاری نیست</p></div>`;
@@ -721,8 +721,8 @@
 
     // ========== Professors & Ratings ==========
     async function loadProfessors() {
-      const { data: professors } = await supabase.from('professors').select('*');
-      const { data: ratings } = await supabase.from('ratings').select('*');
+      const { data: professors } = await db.from('professors').select('*');
+      const { data: ratings } = await db.from('ratings').select('*');
       const list = document.getElementById('professors-list');
       if (!professors || professors.length === 0) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>هنوز استادی اضافه نشده</p></div>`;
@@ -756,14 +756,14 @@
       const score = tempRatings[profId];
       if (!score) return alert('امتیاز را انتخاب کنید');
       const comment = document.getElementById(`comment-${profId}`).value.trim();
-      await supabase.from('ratings').insert({ professor_id: profId, score, comment });
+      await db.from('ratings').insert({ professor_id: profId, score, comment });
       alert('امتیاز ثبت شد');
       loadProfessors();
     }
 
     // ========== Exams ==========
     async function loadExams() {
-      const { data } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('exams').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('exams-list');
       if (!data || !data.length) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>هنوز نمونه سوالی نیست</p></div>`;
@@ -781,7 +781,7 @@
 
     // ========== Notes ==========
     async function loadNotes() {
-      const { data } = await supabase.from('notes').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('notes').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('notes-list');
       if (!data || !data.length) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>هنوز جزوه‌ای نیست</p></div>`;
@@ -798,7 +798,7 @@
 
     // ========== Books ==========
     async function loadBooks() {
-      const { data } = await supabase.from('books').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('books').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('books-list');
       if (!data || !data.length) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>هنوز آگهی کتابی نیست</p></div>`;
@@ -818,7 +818,7 @@
 
     // ========== Feedback ==========
     async function loadFeedback() {
-      const { data } = await supabase.from('feedback').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('feedback').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('feedback-list');
       if (!data || !data.length) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>هنوز پیامی نیست</p></div>`;
@@ -836,7 +836,7 @@
 
     // ========== Events ==========
     async function loadEvents() {
-      const { data } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('events').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('events-list');
       if (!data || !data.length) {
         list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>هنوز رویدادی نیست</p></div>`;
@@ -858,7 +858,7 @@
     }
 
     async function showEventDetail(id) {
-      const { data } = await supabase.from('events').select('*').eq('id', id).single();
+      const { data } = await db.from('events').select('*').eq('id', id).single();
       if (!data) return;
       let imgs = data.images || [];
       if (typeof imgs === 'string') try { imgs = JSON.parse(imgs); } catch(e) {}
@@ -876,7 +876,7 @@
 
     // ========== PR Events ==========
     async function loadPREvents() {
-      const { data } = await supabase.from('events').select('*').order('created_at', { ascending: false });
+      const { data } = await db.from('events').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('pr-events-list');
       list.innerHTML = (data || []).map(item => `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#f8fafc;border-radius:8px;margin-bottom:8px;border:1px solid #e2e8f0;">
@@ -890,7 +890,7 @@
     }
 
     async function startEditEvent(id) {
-      const { data } = await supabase.from('events').select('*').eq('id', id).single();
+      const { data } = await db.from('events').select('*').eq('id', id).single();
       if (!data) return;
       document.getElementById('ev-title').value = data.title || '';
       document.getElementById('ev-summary').value = data.summary || '';
@@ -926,13 +926,13 @@
             return;
           }
           const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${file.name.split('.').pop()}`;
-          const { error } = await supabase.storage.from('images').upload(fileName, file);
+          const { error } = await db.storage.from('images').upload(fileName, file);
           if (error) {
             console.error(error);
             alert('خطا در آپلود عکس: ' + error.message);
             return;
           }
-          const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
+          const { data: urlData } = db.storage.from('images').getPublicUrl(fileName);
           images.push(urlData.publicUrl);
         }
       }
@@ -940,9 +940,9 @@
       if (editId) {
         const updateData = { title, summary, full_text };
         if (images.length > 0) updateData.images = images;
-        await supabase.from('events').update(updateData).eq('id', editId);
+        await db.from('events').update(updateData).eq('id', editId);
       } else {
-        await supabase.from('events').insert({ title, summary, full_text, images });
+        await db.from('events').insert({ title, summary, full_text, images });
       }
       cancelEditEvent();
       loadPREvents();
@@ -953,7 +953,7 @@
 
     async function deleteEvent(id) {
       if (!confirm('حذف شود؟')) return;
-      await supabase.from('events').delete().eq('id', id);
+      await db.from('events').delete().eq('id', id);
       loadPREvents();
       loadEvents();
       renderHomeSlideshow();
@@ -1026,7 +1026,7 @@
       const description = document.getElementById('m-desc').value.trim();
       const contact = document.getElementById('m-contact').value.trim();
       if (!title) return alert('عنوان الزامی است');
-      await supabase.from('lost_found').insert({ type, title, description, contact });
+      await db.from('lost_found').insert({ type, title, description, contact });
       closeModal();
       loadLostFound();
       alert('ثبت شد');
@@ -1037,7 +1037,7 @@
       const description = document.getElementById('m-desc').value.trim();
       const author = document.getElementById('m-author').value.trim();
       if (!title) return alert('عنوان الزامی است');
-      await supabase.from('lab_reports').insert({ course, title, description, author });
+      await db.from('lab_reports').insert({ course, title, description, author });
       closeModal();
       loadLabs();
       alert('ثبت شد');
@@ -1048,7 +1048,7 @@
       const professor = document.getElementById('m-prof').value.trim();
       const description = document.getElementById('m-desc').value.trim();
       if (!title) return alert('عنوان الزامی است');
-      await supabase.from('exams').insert({ course, title, professor, description });
+      await db.from('exams').insert({ course, title, professor, description });
       closeModal();
       loadExams();
       alert('ثبت شد');
@@ -1058,7 +1058,7 @@
       const title = document.getElementById('m-title').value.trim();
       const description = document.getElementById('m-desc').value.trim();
       if (!title) return alert('عنوان الزامی است');
-      await supabase.from('notes').insert({ type, title, description });
+      await db.from('notes').insert({ type, title, description });
       closeModal();
       loadNotes();
       alert('ثبت شد');
@@ -1074,13 +1074,13 @@
       const file = document.getElementById('m-image').files[0];
       if (file) {
         const fileName = `book-${Date.now()}.${file.name.split('.').pop()}`;
-        const { error } = await supabase.storage.from('images').upload(fileName, file);
+        const { error } = await db.storage.from('images').upload(fileName, file);
         if (!error) {
-          const { data } = supabase.storage.from('images').getPublicUrl(fileName);
+          const { data } = db.storage.from('images').getPublicUrl(fileName);
           image = data.publicUrl;
         }
       }
-      await supabase.from('books').insert({ type, title, author, description, contact, image });
+      await db.from('books').insert({ type, title, author, description, contact, image });
       closeModal();
       loadBooks();
       alert('ثبت شد');
@@ -1091,7 +1091,7 @@
       const message = document.getElementById('m-message').value.trim();
       const contact = document.getElementById('m-contact').value.trim();
       if (!title || !message) return alert('عنوان و متن الزامی است');
-      await supabase.from('feedback').insert({ type, title, message, contact });
+      await db.from('feedback').insert({ type, title, message, contact });
       closeModal();
       loadFeedback();
       alert('پیام ارسال شد');
