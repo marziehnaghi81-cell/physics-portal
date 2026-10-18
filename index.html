@@ -34,6 +34,7 @@
     .btn-secondary { background: white; color: var(--primary); border: 2px solid var(--turquoise); }
     .btn-danger { background: #ef4444; color: white; padding: 6px 12px; font-size: 0.82rem; }
     .btn-sm { padding: 7px 14px; font-size: 0.84rem; }
+    .btn-download { background: #10b981; color: white; padding: 6px 12px; font-size: 0.82rem; text-decoration: none; border-radius: 50px; display: inline-block; }
     .items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
     .item-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; transition: 0.3s; position: relative; display: flex; flex-direction: column; }
     .item-card:hover { border-color: var(--turquoise); box-shadow: 0 8px 22px rgba(5,191,219,0.12); transform: translateY(-3px); }
@@ -316,52 +317,30 @@
       renderHomeSlideshow();
     }
 
-    // ========== Admin Panels (Management, Locations, Professors) ==========
-    async function loadAdminPanels() {
-        const { data: mgmt } = await myDb.from('management').select('*');
-        document.getElementById('admin-mgmt-list').innerHTML = (mgmt || []).map(m => `<div class="admin-list-item"><span><strong>${m.role}</strong> — ${m.name}</span><button class="btn btn-danger btn-sm" onclick="deleteRow('management', '${m.id}')">حذف</button></div>`).join('');
-        
-        const { data: locs } = await myDb.from('locations').select('*');
-        document.getElementById('admin-loc-list').innerHTML = (locs || []).map(l => `<div class="admin-list-item"><span><strong>${l.title}</strong> (${l.floor})</span><button class="btn btn-danger btn-sm" onclick="deleteRow('locations', '${l.id}')">حذف</button></div>`).join('');
+    // ========== Delete Logic (Secure) ==========
+    async function attemptDelete(table, id, itemPassword, typeName) {
+        // اگر ادمین بود، بدون رمز حذف کن
+        if (isAdmin) {
+            if(!confirm('به عنوان مدیر، این مورد حذف شود؟')) return;
+            await myDb.from(table).delete().eq('id', id);
+            alert('توسط مدیر حذف شد.');
+            refreshList(table);
+            return;
+        }
 
-        const { data: profs } = await myDb.from('professors').select('*');
-        document.getElementById('admin-prof-list').innerHTML = (profs || []).map(p => `<div class="admin-list-item"><span><strong>${p.name}</strong> — ${p.field}</span><button class="btn btn-danger btn-sm" onclick="deleteRow('professors', '${p.id}')">حذف</button></div>`).join('');
-    }
-
-    async function addMgmt() {
-        const role = document.getElementById('new-role').value.trim();
-        const name = document.getElementById('new-person').value.trim();
-        if(!role || !name) return alert('پر کنید');
-        await myDb.from('management').insert({ role, name });
-        loadAdminPanels(); document.getElementById('new-role').value=''; document.getElementById('new-person').value='';
-    }
-    async function addLoc() {
-        const floor = document.getElementById('new-floor').value;
-        const title = document.getElementById('new-loc-title').value.trim();
-        const description = document.getElementById('new-loc-desc').value.trim();
-        if(!title) return alert('نام مکان را وارد کنید');
-        await myDb.from('locations').insert({ floor, title, description });
-        loadAdminPanels(); document.getElementById('new-loc-title').value=''; document.getElementById('new-loc-desc').value='';
-    }
-    async function addProf() {
-        const name = document.getElementById('new-prof-name').value.trim();
-        const field = document.getElementById('new-prof-field').value.trim();
-        if(!name) return alert('نام را وارد کنید');
-        await myDb.from('professors').insert({ name, field });
-        loadAdminPanels(); document.getElementById('new-prof-name').value=''; document.getElementById('new-prof-field').value='';
-    }
-    async function deleteRow(table, id) {
-        if(!confirm('حذف شود؟')) return;
-        await myDb.from(table).delete().eq('id', id);
-        loadAdminPanels();
-        if(table === 'management' || table === 'locations') loadHome();
+        // اگر ادمین نبود، رمز بپرس
+        const enteredPass = prompt('برای حذف این مورد، رمز شخصی که هنگام ثبت وارد کردید را بنویسید:');
+        if (enteredPass === null) return; // لغو شد
+        if (enteredPass === itemPassword) {
+            await myDb.from(table).delete().eq('id', id);
+            alert('با موفقیت حذف شد.');
+            refreshList(table);
+        } else {
+            alert('رمز اشتباه است! شما مجاز به حذف نیستید.');
+        }
     }
 
-    // ========== Delete Public Items ==========
-    async function deletePublicItem(table, id) {
-        if(!confirm('آیا از حذف این مورد مطمئن هستید؟')) return;
-        await myDb.from(table).delete().eq('id', id);
-        // Refresh current view
+    function refreshList(table) {
         if(table === 'lost_found') loadLostFound();
         if(table === 'lab_reports') loadLabs();
         if(table === 'exams') loadExams();
@@ -370,47 +349,72 @@
         if(table === 'feedback') loadFeedback();
     }
 
-    // ========== Data Loaders (با دکمه حذف) ==========
+    // ========== File Upload Helper ==========
+    async function uploadFile(fileInputId, folder) {
+        const file = document.getElementById(fileInputId).files[0];
+        if (!file) return null;
+        const fileName = `${folder}-${Date.now()}-${file.name}`;
+        const { error } = await myDb.storage.from('files').upload(fileName, file);
+        if (error) { alert('خطا در آپلود فایل: ' + error.message); return null; }
+        const { data } = myDb.storage.from('files').getPublicUrl(fileName);
+        return data.publicUrl;
+    }
+
+    // ========== Admin Panels ==========
+    async function loadAdminPanels() {
+        const { data: mgmt } = await myDb.from('management').select('*');
+        document.getElementById('admin-mgmt-list').innerHTML = (mgmt || []).map(m => `<div class="admin-list-item"><span><strong>${m.role}</strong> — ${m.name}</span><button class="btn btn-danger btn-sm" onclick="deleteRow('management', '${m.id}')">حذف</button></div>`).join('');
+        const { data: locs } = await myDb.from('locations').select('*');
+        document.getElementById('admin-loc-list').innerHTML = (locs || []).map(l => `<div class="admin-list-item"><span><strong>${l.title}</strong> (${l.floor})</span><button class="btn btn-danger btn-sm" onclick="deleteRow('locations', '${l.id}')">حذف</button></div>`).join('');
+        const { data: profs } = await myDb.from('professors').select('*');
+        document.getElementById('admin-prof-list').innerHTML = (profs || []).map(p => `<div class="admin-list-item"><span><strong>${p.name}</strong> — ${p.field}</span><button class="btn btn-danger btn-sm" onclick="deleteRow('professors', '${p.id}')">حذف</button></div>`).join('');
+    }
+    async function addMgmt() { const role = document.getElementById('new-role').value.trim(); const name = document.getElementById('new-person').value.trim(); if(!role || !name) return alert('پر کنید'); await myDb.from('management').insert({ role, name }); loadAdminPanels(); document.getElementById('new-role').value=''; document.getElementById('new-person').value=''; }
+    async function addLoc() { const floor = document.getElementById('new-floor').value; const title = document.getElementById('new-loc-title').value.trim(); if(!title) return alert('نام مکان را وارد کنید'); await myDb.from('locations').insert({ floor, title, description: document.getElementById('new-loc-desc').value.trim() }); loadAdminPanels(); document.getElementById('new-loc-title').value=''; document.getElementById('new-loc-desc').value=''; }
+    async function addProf() { const name = document.getElementById('new-prof-name').value.trim(); if(!name) return alert('نام را وارد کنید'); await myDb.from('professors').insert({ name, field: document.getElementById('new-prof-field').value.trim() }); loadAdminPanels(); document.getElementById('new-prof-name').value=''; document.getElementById('new-prof-field').value=''; }
+    async function deleteRow(table, id) { if(!confirm('حذف شود؟')) return; await myDb.from(table).delete().eq('id', id); loadAdminPanels(); if(table === 'management' || table === 'locations') loadHome(); }
+
+    // ========== Data Loaders ==========
     async function loadLostFound() {
       const { data } = await myDb.from('lost_found').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('lostfound-list');
       if (!data || !data.length) { list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>آگهی‌ای نیست</p></div>`; return; }
-      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type === 'lost' ? 'گم‌شده' : 'پیدا شده'}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.8rem;color:#94a3b8;">📞 ${item.contact || ''}</span><button class="btn btn-danger btn-sm" onclick="deletePublicItem('lost_found', '${item.id}')">حذف</button></div></div>`).join('');
+      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type === 'lost' ? 'گم‌شده' : 'پیدا شده'}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.8rem;color:#94a3b8;">📞 ${item.contact || ''}</span><button class="btn btn-danger btn-sm" onclick="attemptDelete('lost_found', '${item.id}', '${item.password}', 'گم‌شده')">حذف</button></div></div>`).join('');
     }
 
     async function loadLabs() {
       const { data } = await myDb.from('lab_reports').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('labs-list');
       if (!data || !data.length) { list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>گزارشی نیست</p></div>`; return; }
-      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.course || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.8rem;color:#94a3b8;">${item.author || ''}</span><button class="btn btn-danger btn-sm" onclick="deletePublicItem('lab_reports', '${item.id}')">حذف</button></div></div>`).join('');
+      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.course || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p>${item.file_url ? `<a href="${item.file_url}" target="_blank" class="btn-download btn-sm" style="margin-bottom:8px; align-self:flex-start;">📥 دانلود فایل</a>` : ''}<div style="margin-top:auto; padding-top:10px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.8rem;color:#94a3b8;">${item.author || ''}</span><button class="btn btn-danger btn-sm" onclick="attemptDelete('lab_reports', '${item.id}', '${item.password}', 'گزارش‌کار')">حذف</button></div></div>`).join('');
     }
 
     async function loadExams() {
       const { data } = await myDb.from('exams').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('exams-list');
       if (!data || !data.length) { list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>نمونه سوالی نیست</p></div>`; return; }
-      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.course || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; text-align:left;"><button class="btn btn-danger btn-sm" onclick="deletePublicItem('exams', '${item.id}')">حذف</button></div></div>`).join('');
+      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.course || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p>${item.file_url ? `<a href="${item.file_url}" target="_blank" class="btn-download btn-sm" style="margin-bottom:8px; align-self:flex-start;">📥 دانلود سوال</a>` : ''}<div style="margin-top:auto; padding-top:10px; text-align:left;"><button class="btn btn-danger btn-sm" onclick="attemptDelete('exams', '${item.id}', '${item.password}', 'نمونه سوال')">حذف</button></div></div>`).join('');
     }
 
     async function loadNotes() {
       const { data } = await myDb.from('notes').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('notes-list');
       if (!data || !data.length) { list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>جزوه‌ای نیست</p></div>`; return; }
-      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; text-align:left;"><button class="btn btn-danger btn-sm" onclick="deletePublicItem('notes', '${item.id}')">حذف</button></div></div>`).join('');
+      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p>${item.file_url ? `<a href="${item.file_url}" target="_blank" class="btn-download btn-sm" style="margin-bottom:8px; align-self:flex-start;">📥 دانلود جزوه</a>` : ''}<div style="margin-top:auto; padding-top:10px; text-align:left;"><button class="btn btn-danger btn-sm" onclick="attemptDelete('notes', '${item.id}', '${item.password}', 'جزوه')">حذف</button></div></div>`).join('');
     }
 
     async function loadBooks() {
       const { data } = await myDb.from('books').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('books-list');
       if (!data || !data.length) { list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>کتابی نیست</p></div>`; return; }
-      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type || ''}</span>${item.image ? `<img src="${item.image}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin:8px 0;">` : ''}<h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.8rem;color:#94a3b8;">📞 ${item.contact || ''}</span><button class="btn btn-danger btn-sm" onclick="deletePublicItem('books', '${item.id}')">حذف</button></div></div>`).join('');
+      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type || ''}</span>${item.image ? `<img src="${item.image}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;margin:8px 0;">` : ''}${item.file_url ? `<a href="${item.file_url}" target="_blank" class="btn-download btn-sm" style="margin-bottom:8px; align-self:flex-start;">📥 دانلود فایل</a>` : ''}<h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.description || ''}</p><div style="margin-top:auto; padding-top:10px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:0.8rem;color:#94a3b8;">📞 ${item.contact || ''}</span><button class="btn btn-danger btn-sm" onclick="attemptDelete('books', '${item.id}', '${item.password}', 'کتاب')">حذف</button></div></div>`).join('');
     }
 
     async function loadFeedback() {
       const { data } = await myDb.from('feedback').select('*').order('created_at', { ascending: false });
       const list = document.getElementById('feedback-list');
       if (!data || !data.length) { list.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>پیامی نیست</p></div>`; return; }
-      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.message || ''}</p><div style="margin-top:auto; padding-top:10px; text-align:left;"><button class="btn btn-danger btn-sm" onclick="deletePublicItem('feedback', '${item.id}')">حذف</button></div></div>`).join('');
+      list.innerHTML = data.map(item => `<div class="item-card"><span class="floor-badge">${item.type || ''}</span><h4 style="margin:6px 0;color:var(--primary)">${item.title}</h4><p style="color:var(--gray);font-size:0.9rem">${item.message || ''}</p><div style="margin-top:auto; padding-top:10px; text-align:left;"><button class="btn btn-danger btn-sm" onclick="attemptDelete('feedback', '${item.id}', '${item.password}', 'پیام')">حذف</button></div></div>`).join('');
     }
 
     async function loadProfessors() {
@@ -496,7 +500,7 @@
       let images = [];
       if (files.length > 0) {
         for (const file of files) {
-          if (file.size > 2 * 1024 * 1024) { alert('حجم عکس زیاد است (بیشتر از ۲ مگابایت)'); return; }
+          if (file.size > 2 * 1024 * 1024) { alert('حجم عکس زیاد است'); return; }
           const fileName = `${Date.now()}-${file.name}`;
           const { error } = await myDb.storage.from('images').upload(fileName, file);
           if (error) { alert('خطا در آپلود: ' + error.message); return; }
@@ -504,13 +508,8 @@
           images.push(data.publicUrl);
         }
       }
-      if (editId) {
-        const upd = { title, summary, full_text };
-        if (images.length > 0) upd.images = images;
-        await myDb.from('events').update(upd).eq('id', editId);
-      } else {
-        await myDb.from('events').insert({ title, summary, full_text, images });
-      }
+      if (editId) { const upd = { title, summary, full_text }; if (images.length > 0) upd.images = images; await myDb.from('events').update(upd).eq('id', editId); }
+      else { await myDb.from('events').insert({ title, summary, full_text, images }); }
       cancelEditEvent(); loadPREvents(); loadEvents(); renderHomeSlideshow(); alert('ذخیره شد');
     }
     async function deleteEvent(id) { if(!confirm('حذف شود؟')) return; await myDb.from('events').delete().eq('id', id); loadPREvents(); loadEvents(); renderHomeSlideshow(); }
@@ -519,36 +518,92 @@
     function openModal(type) {
       const titles = { lostfound: 'ثبت آگهی', lab: 'گزارش‌کار', exam: 'نمونه سوال', note: 'جزوه', book: 'کتاب', feedback: 'پیام' };
       document.getElementById('modal-title').textContent = titles[type] || 'فرم';
+      const passHtml = `<div class="form-group"><label>رمز شخصی (برای حذف بعدی)</label><input type="password" id="m-pass" placeholder="یک رمز ساده وارد کنید"></div>`;
       let html = '';
-      if (type === 'lostfound') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option value="lost">گم‌شده</option><option value="found">پیدا شده</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>تماس</label><input type="text" id="m-contact"></div><button class="btn btn-primary" style="width:100%" onclick="submitLost()">ثبت</button>`;
-      else if (type === 'lab') html = `<div class="form-group"><label>درس</label><select id="m-course"><option>فیزیک ۱</option><option>فیزیک ۲</option><option>فیزیک ۳</option><option>فیزیک ۴</option><option>اپتیک</option><option>حالت جامد</option><option>سایر</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>نام</label><input type="text" id="m-author"></div><button class="btn btn-primary" style="width:100%" onclick="submitLab()">ثبت</button>`;
-      else if (type === 'exam') html = `<div class="form-group"><label>درس</label><input type="text" id="m-course"></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>استاد</label><input type="text" id="m-prof"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><button class="btn btn-primary" style="width:100%" onclick="submitExam()">ثبت</button>`;
-      else if (type === 'note') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option>جزوه</option><option>کتاب</option><option>خلاصه</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><button class="btn btn-primary" style="width:100%" onclick="submitNote()">ثبت</button>`;
-      else if (type === 'book') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option value="دارم">دارم</option><option value="میخوام">می‌خوام</option></select></div><div class="form-group"><label>نام کتاب</label><input type="text" id="m-title"></div><div class="form-group"><label>نویسنده</label><input type="text" id="m-author"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>عکس</label><input type="file" id="m-image" accept="image/*"></div><div class="form-group"><label>تماس</label><input type="text" id="m-contact"></div><button class="btn btn-primary" style="width:100%" onclick="submitBook()">ثبت</button>`;
-      else if (type === 'feedback') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option>پیشنهاد</option><option>انتقاد</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>متن</label><textarea id="m-message"></textarea></div><div class="form-group"><label>تماس</label><input type="text" id="m-contact"></div><button class="btn btn-primary" style="width:100%" onclick="submitFeedback()">ارسال</button>`;
+      
+      if (type === 'lostfound') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option value="lost">گم‌شده</option><option value="found">پیدا شده</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>تماس</label><input type="text" id="m-contact"></div>${passHtml}<button class="btn btn-primary" style="width:100%" onclick="submitItem('lost_found')">ثبت</button>`;
+      
+      else if (type === 'lab') html = `<div class="form-group"><label>درس</label><select id="m-course"><option>فیزیک ۱</option><option>فیزیک ۲</option><option>فیزیک ۳</option><option>فیزیک ۴</option><option>اپتیک</option><option>حالت جامد</option><option>سایر</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>نام</label><input type="text" id="m-author"></div><div class="form-group"><label>فایل گزارش (اختیاری)</label><input type="file" id="m-file"></div>${passHtml}<button class="btn btn-primary" style="width:100%" onclick="submitItem('lab_reports')">ثبت</button>`;
+      
+      else if (type === 'exam') html = `<div class="form-group"><label>درس</label><input type="text" id="m-course"></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>استاد</label><input type="text" id="m-prof"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>فایل سوال (اختیاری)</label><input type="file" id="m-file"></div>${passHtml}<button class="btn btn-primary" style="width:100%" onclick="submitItem('exams')">ثبت</button>`;
+      
+      else if (type === 'note') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option>جزوه</option><option>کتاب</option><option>خلاصه</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>فایل جزوه (اختیاری)</label><input type="file" id="m-file"></div>${passHtml}<button class="btn btn-primary" style="width:100%" onclick="submitItem('notes')">ثبت</button>`;
+      
+      else if (type === 'book') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option value="دارم">دارم</option><option value="میخوام">می‌خوام</option></select></div><div class="form-group"><label>نام کتاب</label><input type="text" id="m-title"></div><div class="form-group"><label>نویسنده</label><input type="text" id="m-author"></div><div class="form-group"><label>توضیحات</label><textarea id="m-desc"></textarea></div><div class="form-group"><label>عکس کتاب (اختیاری)</label><input type="file" id="m-image" accept="image/*"></div><div class="form-group"><label>فایل ضمیمه (اختیاری)</label><input type="file" id="m-file"></div><div class="form-group"><label>تماس</label><input type="text" id="m-contact"></div>${passHtml}<button class="btn btn-primary" style="width:100%" onclick="submitItem('books')">ثبت</button>`;
+      
+      else if (type === 'feedback') html = `<div class="form-group"><label>نوع</label><select id="m-type"><option>پیشنهاد</option><option>انتقاد</option></select></div><div class="form-group"><label>عنوان</label><input type="text" id="m-title"></div><div class="form-group"><label>متن</label><textarea id="m-message"></textarea></div><div class="form-group"><label>تماس</label><input type="text" id="m-contact"></div>${passHtml}<button class="btn btn-primary" style="width:100%" onclick="submitItem('feedback')">ارسال</button>`;
+      
       document.getElementById('modal-body').innerHTML = html;
       document.getElementById('modal').classList.add('show');
     }
     function closeModal() { document.getElementById('modal').classList.remove('show'); }
 
-    async function submitLost() { const type = document.getElementById('m-type').value; const title = document.getElementById('m-title').value.trim(); if (!title) return alert('عنوان الزامی'); await myDb.from('lost_found').insert({ type, title, description: document.getElementById('m-desc').value.trim(), contact: document.getElementById('m-contact').value.trim() }); closeModal(); loadLostFound(); }
-    async function submitLab() { const title = document.getElementById('m-title').value.trim(); if (!title) return alert('عنوان الزامی'); await myDb.from('lab_reports').insert({ course: document.getElementById('m-course').value, title, description: document.getElementById('m-desc').value.trim(), author: document.getElementById('m-author').value.trim() }); closeModal(); loadLabs(); }
-    async function submitExam() { const title = document.getElementById('m-title').value.trim(); if (!title) return alert('عنوان الزامی'); await myDb.from('exams').insert({ course: document.getElementById('m-course').value.trim(), title, professor: document.getElementById('m-prof').value.trim(), description: document.getElementById('m-desc').value.trim() }); closeModal(); loadExams(); }
-    async function submitNote() { const title = document.getElementById('m-title').value.trim(); if (!title) return alert('عنوان الزامی'); await myDb.from('notes').insert({ type: document.getElementById('m-type').value, title, description: document.getElementById('m-desc').value.trim() }); closeModal(); loadNotes(); }
-    async function submitFeedback() { const title = document.getElementById('m-title').value.trim(); const message = document.getElementById('m-message').value.trim(); if (!title || !message) return alert('عنوان و متن الزامی'); await myDb.from('feedback').insert({ type: document.getElementById('m-type').value, title, message, contact: document.getElementById('m-contact').value.trim() }); closeModal(); loadFeedback(); }
+    // ========== Unified Form Submission ==========
+    async function submitItem(table) {
+        const title = document.getElementById('m-title').value.trim();
+        const pass = document.getElementById('m-pass').value.trim();
+        if (!title) return alert('عنوان الزامی است');
+        if (!pass) return alert('لطفاً یک رمز شخصی برای حذف وارد کنید');
 
-    async function submitBook() {
-      const title = document.getElementById('m-title').value.trim(); const contact = document.getElementById('m-contact').value.trim();
-      if (!title || !contact) return alert('عنوان و تماس الزامی');
-      let image = null; const file = document.getElementById('m-image').files[0];
-      if (file) {
-        const fileName = `book-${Date.now()}-${file.name}`;
-        const { error } = await myDb.storage.from('images').upload(fileName, file);
-        if (!error) { const { data } = myDb.storage.from('images').getPublicUrl(fileName); image = data.publicUrl; }
-        else { alert('خطا در آپلود عکس: ' + error.message); return; }
-      }
-      await myDb.from('books').insert({ type: document.getElementById('m-type').value, title, author: document.getElementById('m-author').value.trim(), description: document.getElementById('m-desc').value.trim(), contact, image });
-      closeModal(); loadBooks();
+        // آپلود فایل عمومی
+        let file_url = null;
+        const fileInput = document.getElementById('m-file');
+        if (fileInput && fileInput.files.length > 0) {
+            file_url = await uploadFile('m-file', table);
+            if (!file_url) return; // خطا در آپلود
+        }
+
+        const insertData = { title, password: pass };
+        
+        if (table === 'lost_found') {
+            insertData.type = document.getElementById('m-type').value;
+            insertData.description = document.getElementById('m-desc').value.trim();
+            insertData.contact = document.getElementById('m-contact').value.trim();
+        } else if (table === 'lab_reports') {
+            insertData.course = document.getElementById('m-course').value;
+            insertData.description = document.getElementById('m-desc').value.trim();
+            insertData.author = document.getElementById('m-author').value.trim();
+            insertData.file_url = file_url;
+        } else if (table === 'exams') {
+            insertData.course = document.getElementById('m-course').value.trim();
+            insertData.professor = document.getElementById('m-prof').value.trim();
+            insertData.description = document.getElementById('m-desc').value.trim();
+            insertData.file_url = file_url;
+        } else if (table === 'notes') {
+            insertData.type = document.getElementById('m-type').value;
+            insertData.description = document.getElementById('m-desc').value.trim();
+            insertData.file_url = file_url;
+        } else if (table === 'books') {
+            insertData.type = document.getElementById('m-type').value;
+            insertData.author = document.getElementById('m-author').value.trim();
+            insertData.description = document.getElementById('m-desc').value.trim();
+            insertData.contact = document.getElementById('m-contact').value.trim();
+            insertData.file_url = file_url;
+            // آپلود عکس کتاب
+            const imgInput = document.getElementById('m-image');
+            if (imgInput && imgInput.files.length > 0) {
+                const imgFile = imgInput.files[0];
+                const imgName = `book-${Date.now()}-${imgFile.name}`;
+                const { error } = await myDb.storage.from('images').upload(imgName, imgFile);
+                if (!error) {
+                    const { data } = myDb.storage.from('images').getPublicUrl(imgName);
+                    insertData.image = data.publicUrl;
+                }
+            }
+        } else if (table === 'feedback') {
+            insertData.type = document.getElementById('m-type').value;
+            insertData.message = document.getElementById('m-message').value.trim();
+            insertData.contact = document.getElementById('m-contact').value.trim();
+        }
+
+        const { error } = await myDb.from(table).insert(insertData);
+        if (error) {
+            alert('خطا در ذخیره: ' + error.message);
+        } else {
+            closeModal();
+            refreshList(table);
+            alert('با موفقیت ثبت شد. رمز شخصی خود را فراموش نکنید!');
+        }
     }
 
     // ========== Init ==========
